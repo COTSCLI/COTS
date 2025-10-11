@@ -31,7 +31,39 @@ This project adheres to a Code of Conduct that all contributors are expected to 
    git remote add upstream https://github.com/COTSCLI/COTS.git
    ```
 
-**Note:** You will work on your fork and submit Pull Requests. You do not push directly to the upstream repository.
+**Note:** You will work on your fork and submit Pull Requests. You must not push directly to the upstream repository.
+
+### Fork-only PR policy
+
+- Open PRs from your fork (`origin`) only; do not push any branches to `upstream`.
+- Direct pushes to `upstream` are restricted to maintainers and automation.
+- Keep your fork up to date and base your feature branches on the latest `upstream/main`.
+
+Recommended safety guard to prevent accidental upstream pushes:
+
+```bash
+# Make upstream fetch-only locally
+git remote set-url --push upstream DISABLE
+# Verify: upstream should have no push URL
+git remote -v
+```
+
+Sync your fork with upstream before starting work:
+
+```bash
+git fetch upstream
+git checkout main
+git rebase upstream/main
+git push origin main
+```
+
+Create a feature branch on your fork and push to your fork:
+
+```bash
+git checkout -b feature/your-feature
+# ...do work...
+git push -u origin feature/your-feature
+```
 
 ## Development Setup
 
