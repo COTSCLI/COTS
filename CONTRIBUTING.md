@@ -26,10 +26,12 @@ This project adheres to a Code of Conduct that all contributors are expected to 
    git clone https://github.com/YOUR_USERNAME/COTS.git
    cd COTS
    ```
-3. **Add upstream remote**:
+3. **Add upstream remote** (to sync with main repo):
    ```bash
    git remote add upstream https://github.com/COTSCLI/COTS.git
    ```
+
+**Note:** You will work on your fork and submit Pull Requests. You do not push directly to the upstream repository.
 
 ## Development Setup
 
@@ -176,7 +178,7 @@ stack hpc report --all
 
 ### Before Submitting
 
-1. **Create a feature branch**:
+1. **Create a feature branch** (on your fork):
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -198,6 +200,13 @@ stack hpc report --all
 6. **Update documentation** if needed
 
 7. **Add entry to CHANGELOG.md** under "Unreleased"
+
+8. **Push to your fork**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+9. **Create a Pull Request** from your fork to the main repository
 
 ### Commit Message Format
 
