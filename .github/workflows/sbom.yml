@@ -1,0 +1,36 @@
+name: SBOM
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  generate-sbom:
+    name: Generate SBOM (SPDX and CycloneDX)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Syft (SPDX/CycloneDX generator)
+        uses: anchore/sbom-action/download-syft@v0.17.2
+
+      - name: Generate SPDX SBOM
+        run: |
+          syft packages dir:. -o spdx-json=sbom.spdx.json || syft dir:. -o spdx-json=sbom.spdx.json
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          syft packages dir:. -o cyclonedx-json=sbom.cdx.json || syft dir:. -o cyclonedx-json=sbom.cdx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: |
+            sbom.spdx.json
+            sbom.cdx.json
