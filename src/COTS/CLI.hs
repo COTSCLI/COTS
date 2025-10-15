@@ -41,7 +41,7 @@ module COTS.CLI
 where
 
 import COTS.Config (loadConfig)
-import COTS.Database (DBWallet (..), Database (..), closeDatabase, exportUTXOs, getWalletByName, getWallets, importUTXOs, initDatabase, insertWallet, inspectDatabase, loadSnapshot, resetDatabase, snapshotDatabase)
+import COTS.Database (DBUTXO (..), DBWallet (..), DBProtocolParams (..), Database (..), closeDatabase, exportUTXOs, getWalletByName, getWallets, importUTXOs, initDatabase, insertProtocolParams, insertUTXO, insertWallet, inspectDatabase, loadSnapshot, resetDatabase, snapshotDatabase)
 import COTS.Export.CardanoCLI (exportTransactionToFile)
 import COTS.Export.Koios (exportTransactionToKoiosFile)
 import COTS.Protocol.Parameters (defaultProtocolParameters, loadProtocolParameters)
@@ -52,14 +52,16 @@ import COTS.Wallet.HD (bech32FromAddress)
 import Control.Monad (filterM, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Crypto.Hash (Digest, SHA256, hash)
-import Data.Aeson (encode)
+import Data.Aeson (encode, decode, Value (..))
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KeyMap
+import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Vector as V
 import Data.Char (intToDigit)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -74,15 +76,16 @@ import Options.Applicative
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Exit (exitFailure)
 import System.FilePath (isAbsolute, (</>))
+import System.Random (randomRIO)
+import Text.Printf (printf)
+import System.Process (readProcess)
+import Text.Read (readMaybe)
 -- | Root-level app init options
 data AppInitOptions = AppInitOptions
   { appInitPath :: Maybe FilePath,
     appInitName :: Maybe Text,
     appInitNetwork :: Network
   }
-
-import System.Random (randomRIO)
-import Text.Printf (printf)
 
 -- Add a new structure for global options
 data GlobalOptions = GlobalOptions
@@ -152,6 +155,7 @@ data UTXOCommand
 -- | Protocol subcommands
 data ProtocolCommand
   = Update UpdateOptions
+  | Fetch FetchOptions
 
 -- | Database subcommands
 data DatabaseCommand
@@ -238,6 +242,13 @@ data ReserveOptions = ReserveOptions
 data UpdateOptions = UpdateOptions
   { updateProtocolParamsFile :: FilePath, -- --protocol-params-file
     updateDbFile :: FilePath -- --db-file
+  }
+
+-- | Fetch protocol parameters options
+data FetchOptions = FetchOptions
+  { fetchUrl :: String, -- --url
+    fetchOutFile :: FilePath, -- --out-file
+    fetchDbFile :: FilePath -- --db-file
   }
 
 -- | Init database options
@@ -519,6 +530,7 @@ runUTXOCommand cmd homeDir = case cmd of
 runProtocolCommand :: ProtocolCommand -> FilePath -> IO ()
 runProtocolCommand cmd homeDir = case cmd of
   Update opts -> runUpdate opts homeDir
+  Fetch opts -> runFetch opts homeDir
 
 runDatabaseCommand :: DatabaseCommand -> FilePath -> IO ()
 runDatabaseCommand cmd homeDir = case cmd of
@@ -1007,6 +1019,49 @@ parseProtocolParameters content =
   -- In real implementation, this would parse JSON or CBOR
   defaultProtocolParameters
 
+-- | Fetch protocol parameters from URL (e.g., Koios), write to out file, and update DB
+runFetch :: FetchOptions -> FilePath -> IO ()
+runFetch opts _ = do
+  putStrLn "🌐 Fetching protocol parameters..."
+  putStrLn $ "🔗 URL: " ++ fetchUrl opts
+  json <- readProcess "curl" ["-s", fetchUrl opts] ""
+  writeFile (fetchOutFile opts) json
+  putStrLn $ "💾 Saved to: " ++ fetchOutFile opts
+  let _params = parseKoiosProtocolParameters (LBS.fromStrict (BS8.pack json))
+  db <- initDatabase (fetchDbFile opts)
+  now <- getCurrentTime
+  insertProtocolParams db DBProtocolParams { dbParams = T.pack json, dbUpdatedAt = now }
+  closeDatabase db
+  putStrLn "✅ Protocol parameters stored in DB."
+
+-- | Parse Koios epoch_params JSON into ProtocolParameters (best-effort)
+parseKoiosProtocolParameters :: LBS.ByteString -> ProtocolParameters
+parseKoiosProtocolParameters lbs =
+  case decode lbs :: Maybe Value of
+    Just (Array arr) -> case V.toList arr of
+      (Object o : _) -> fromObj o
+      _ -> defaultProtocolParameters
+    Just (Object o) -> fromObj o
+    _ -> defaultProtocolParameters
+  where
+    fromObj o =
+      let getNum k def =
+            case KM.lookup k o of
+              Just (Number n) -> round n
+              Just (String s) -> maybe def id (readMaybe (T.unpack s))
+              _ -> def
+          d = defaultProtocolParameters
+       in d
+            { minFeeA = getNum "min_fee_a" (minFeeA d),
+              minFeeB = getNum "min_fee_b" (minFeeB d),
+              maxTxSize = getNum "max_tx_size" (maxTxSize d),
+              maxValSize = getNum "max_val_size" (maxValSize d),
+              keyDeposit = getNum "key_deposit" (keyDeposit d),
+              poolDeposit = getNum "pool_deposit" (poolDeposit d),
+              maxCollateralInputs = getNum "max_collateral_inputs" (maxCollateralInputs d),
+              collateralPercentage = getNum "collateral_percent" (collateralPercentage d)
+            }
+
 -- | Update protocol parameters in database
 updateProtocolParameters :: Database -> ProtocolParameters -> IO ()
 updateProtocolParameters db params =
@@ -1053,14 +1108,14 @@ runInit opts homeDir = do
         Just cfgVal -> do
           now <- getCurrentTime
           -- Store protocol params
-          insertProtocolParams db DBProtocolParams { dbParams = T.pack (BS8.unpack (toStrict (encode (protocolParameters cfgVal)))), dbUpdatedAt = now }
+          insertProtocolParams db DBProtocolParams { dbParams = T.pack (BS8.unpack (LBS.toStrict (encode (protocolParameters cfgVal)))), dbUpdatedAt = now }
           -- Store wallets and their UTXOs
           mapM_ (\w -> insertWallet db DBWallet { dbWalletName = name w, dbWalletAddress = case address w of Address a -> a, dbWalletCreated = now }) (wallets cfgVal)
           mapM_ (\w -> mapM_ (\u -> insertUTXO db DBUTXO { dbTxHash = case txHash u of TransactionId h -> h
                                                           , dbTxIx = fromIntegral (unTxIndex (txIx u))
                                                           , dbAddress = case address w of Address a -> a
                                                           , dbAmount = fromIntegral (lovelace (amount u))
-                                                          , dbAssets = Just (T.pack (BS8.unpack (toStrict (encode (assets (amount u))))))
+                                                          , dbAssets = Just (T.pack (BS8.unpack (LBS.toStrict (encode (assets (amount u))))))
                                                           , dbSpent = 0
                                                           , dbCreatedAt = now }) (utxos w)) (wallets cfgVal)
     [] -> return ()
@@ -1490,7 +1545,7 @@ inferWorkspaceConfig homeDir net =
         Testnet -> "testnet"
         Preview -> "preview"
         Preprod -> "preprod"
-      base = (takeWhile (/= "~") homeDir) -- crude; prefer explicit path in practice
+      base = homeDir
    in base </> ".cotscli" </> netName </> "config.json"
 
 -- | Append a wallet with a genesis UTXO to config.json
@@ -1776,11 +1831,19 @@ reserveOptions =
 protocolParser :: Parser ProtocolCommand
 protocolParser =
   hsubparser
-    ( command "update" (info (Update <$> updateOptions) (progDesc "Update protocol parameters"))
+    ( command "update" (info (Update <$> updateOptions) (progDesc "Update protocol parameters from a local file"))
+        <> command "fetch" (info (Fetch <$> fetchOptions) (progDesc "Fetch protocol parameters from a URL (e.g., Koios) and store to file and DB"))
     )
 
 updateOptions :: Parser UpdateOptions
 updateOptions =
   UpdateOptions
     <$> strOption (long "protocol-params-file" <> metavar "FILE" <> help "Path to the protocol parameters file")
+    <*> strOption (long "db-file" <> metavar "FILE" <> help "Path to the SQLite database file")
+
+fetchOptions :: Parser FetchOptions
+fetchOptions =
+  FetchOptions
+    <$> strOption (long "url" <> metavar "URL" <> help "Source URL for protocol parameters (e.g., https://api.koios.rest/api/v1/epoch_params)")
+    <*> strOption (long "out-file" <> metavar "FILE" <> help "Path to save the fetched protocol parameters JSON")
     <*> strOption (long "db-file" <> metavar "FILE" <> help "Path to the SQLite database file")
