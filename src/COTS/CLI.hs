@@ -75,7 +75,7 @@ import Data.Word (Word64)
 import Options.Applicative
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Exit (exitFailure)
-import System.FilePath (isAbsolute, (</>))
+import System.FilePath (isAbsolute, (</>), takeDirectory)
 import System.Random (randomRIO)
 import Text.Printf (printf)
 import System.Process (readProcess)
@@ -575,10 +575,17 @@ runBuild opts homeDir = do
   putStrLn $ "📁 Database file: " ++ dbFile opts
   putStrLn $ "📄 Output file: " ++ txPath
 
-  -- Load UTXOs and config from database
+  -- Load UTXOs from database and config from sibling config.json if present
   db <- initDatabase (dbFile opts)
   utxos <- exportUTXOs db
-  config <- loadConfig (dbFile opts) -- Assuming config is also in the db
+  let cfgCandidate = takeDirectory (dbFile opts) </> "config.json"
+  cfgExists <- doesFileExist cfgCandidate
+  config <- if cfgExists
+              then loadConfig cfgCandidate
+              else do
+                putStrLn "⚠️  No config.json found next to DB; using default protocol parameters (Preprod)."
+                let params = loadProtocolParameters Preprod
+                return Config { network = Preprod, protocolParameters = params, wallets = [] }
   closeDatabase db
 
   -- Load script, datum, and redeemer if provided
