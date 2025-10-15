@@ -5,6 +5,7 @@
 module COTS.CLI
   ( runCLI,
     Command (..),
+    AppInitOptions (..),
     TransactionCommand (..),
     UTXOCommand (..),
     ProtocolCommand (..),
@@ -43,7 +44,7 @@ import COTS.Config (loadConfig)
 import COTS.Database (DBWallet (..), Database (..), closeDatabase, exportUTXOs, getWalletByName, getWallets, importUTXOs, initDatabase, insertWallet, inspectDatabase, loadSnapshot, resetDatabase, snapshotDatabase)
 import COTS.Export.CardanoCLI (exportTransactionToFile)
 import COTS.Export.Koios (exportTransactionToKoiosFile)
-import COTS.Protocol.Parameters (defaultProtocolParameters)
+import COTS.Protocol.Parameters (defaultProtocolParameters, loadProtocolParameters)
 import COTS.Simulation.Core (SimulationContext (..), simulateTransaction)
 import COTS.Types hiding (command)
 import COTS.Version (getVersionString)
@@ -73,6 +74,13 @@ import Options.Applicative
 import System.Directory (copyFile, createDirectoryIfMissing, doesFileExist, getHomeDirectory)
 import System.Exit (exitFailure)
 import System.FilePath (isAbsolute, (</>))
+-- | Root-level app init options
+data AppInitOptions = AppInitOptions
+  { appInitPath :: Maybe FilePath,
+    appInitName :: Maybe Text,
+    appInitNetwork :: Network
+  }
+
 import System.Random (randomRIO)
 import Text.Printf (printf)
 
@@ -124,6 +132,7 @@ data Command
   | AddressCmd AddressCommand
   | StakeAddressCmd StakeAddressCommand
   | MintCmd MintCommand
+  | AppInitCmd AppInitOptions
   | Version
 
 -- | Transaction subcommands
@@ -432,6 +441,7 @@ runCommand cmd homeDir = case cmd of
   AddressCmd addrCmd -> runAddressCommand addrCmd homeDir
   StakeAddressCmd stakeAddrCmd -> runStakeAddressCommand stakeAddrCmd homeDir
   MintCmd mintCmd -> runMintCommand mintCmd homeDir
+  AppInitCmd opts -> runAppInit opts
   Version -> runVersion homeDir
 
 -- Restore commandParser
@@ -446,6 +456,7 @@ commandParser =
         <> command "address" (info addressSub (progDesc "Manage payment addresses"))
         <> command "stake-address" (info stakeAddressSub (progDesc "Manage staking addresses"))
         <> command "mint" (info mintSub (progDesc "Token minting management"))
+        <> command "init" (info appInitSub (progDesc "Initialize COTS workspace with per-network config.json"))
         <> command "version" (info (pure Version) (progDesc "Show COTS version"))
     )
 
@@ -468,6 +479,16 @@ walletSub = WalletCmd <$> walletParser
 
 addressSub :: Parser Command
 addressSub = AddressCmd <$> addressParser
+appInitSub :: Parser Command
+appInitSub = AppInitCmd <$> appInitOptions
+
+appInitOptions :: Parser AppInitOptions
+appInitOptions =
+  AppInitOptions
+    <$> optional (strOption (long "path" <> metavar "DIR" <> help "Base directory for COTS workspace (default: ~/.cotscli)"))
+    <*> optional (strOption (long "name" <> metavar "NAME" <> help "Optional name to tag this workspace"))
+    <*> option auto (long "network" <> metavar "NETWORK" <> help "Network (Mainnet, Testnet, Preview, Preprod)" <> value Preprod <> showDefault)
+
 
 stakeAddressSub :: Parser Command
 stakeAddressSub = StakeAddressCmd <$> stakeAddressParser
@@ -1397,6 +1418,29 @@ runMintCalculate opts homeDir = do
   putStrLn $ "💰 Base fee: " ++ show baseFee ++ " lovelace"
   putStrLn $ "🪙 Asset fee: " ++ show assetFee ++ " lovelace"
   putStrLn $ "💸 Total fee: " ++ show totalFee ++ " lovelace"
+
+-- | Root-level init: create per-network workspace and config.json
+runAppInit :: AppInitOptions -> IO ()
+runAppInit AppInitOptions {..} = do
+  home <- getHomeDirectory
+  let base = case appInitPath of
+        Just p -> p
+        Nothing -> home </> ".cotscli"
+      networkName = case appInitNetwork of
+        Mainnet -> "mainnet"
+        Testnet -> "testnet"
+        Preview -> "preview"
+        Preprod -> "preprod"
+      netDir = base </> networkName
+      subdirs = ["keys", "addresses", "utxos", "transactions", "protocol", "scripts"]
+  createDirectoryIfMissing True netDir
+  mapM_ (\d -> createDirectoryIfMissing True (netDir </> d)) subdirs
+  let cfgPath = netDir </> "config.json"
+      params = loadProtocolParameters appInitNetwork
+      emptyConfig = Config { network = appInitNetwork, protocolParameters = params, wallets = [] }
+  LBS.writeFile cfgPath (encode emptyConfig)
+  putStrLn $ "✅ Initialized COTS workspace at: " ++ netDir
+  putStrLn $ "📝 Created config: " ++ cfgPath
 
 -- | Run version command
 runVersion :: FilePath -> IO ()
