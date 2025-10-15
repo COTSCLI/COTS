@@ -1041,6 +1041,29 @@ runInit opts homeDir = do
     examples
   -- Initialiser la base SQLite
   db <- initDatabase (initDbFile opts)
+  -- If a workspace config exists nearby, import protocol params, wallets and UTXOs
+  let possibleConfigs = [homeDir </> "config.json", homeDir </> ".." </> "config.json"]
+  mExisting <- filterM doesFileExist possibleConfigs
+  case mExisting of
+    (cfg:_) -> do
+      putStrLn $ "📄 Found config: " ++ cfg ++ " — importing into DB"
+      mCfg <- Aeson.decodeFileStrict' cfg :: IO (Maybe Config)
+      case mCfg of
+        Nothing -> putStrLn "❌ Could not parse config.json"
+        Just cfgVal -> do
+          now <- getCurrentTime
+          -- Store protocol params
+          insertProtocolParams db DBProtocolParams { dbParams = T.pack (BS8.unpack (toStrict (encode (protocolParameters cfgVal)))), dbUpdatedAt = now }
+          -- Store wallets and their UTXOs
+          mapM_ (\w -> insertWallet db DBWallet { dbWalletName = name w, dbWalletAddress = case address w of Address a -> a, dbWalletCreated = now }) (wallets cfgVal)
+          mapM_ (\w -> mapM_ (\u -> insertUTXO db DBUTXO { dbTxHash = case txHash u of TransactionId h -> h
+                                                          , dbTxIx = fromIntegral (unTxIndex (txIx u))
+                                                          , dbAddress = case address w of Address a -> a
+                                                          , dbAmount = fromIntegral (lovelace (amount u))
+                                                          , dbAssets = Just (T.pack (BS8.unpack (toStrict (encode (assets (amount u))))))
+                                                          , dbSpent = 0
+                                                          , dbCreatedAt = now }) (utxos w)) (wallets cfgVal)
+    [] -> return ()
   closeDatabase db
   putStrLn "✅ Database and home structure initialized successfully!"
 
