@@ -328,7 +328,9 @@ data AddressBuildOptions = AddressBuildOptions
   { buildPaymentVerificationKeyFile :: Maybe FilePath, -- --payment-verification-key-file
     buildStakeVerificationKeyFile :: Maybe FilePath, -- --stake-verification-key-file
     buildOutFile :: FilePath, -- --out-file
-    buildNetwork :: Network -- --mainnet or --testnet-magic
+    buildNetwork :: Network, -- --mainnet or --testnet-magic
+    buildInitialAmount :: Maybe Word64, -- --initial-amount (lovelace)
+    buildConfigPath :: Maybe FilePath -- --config (path to config.json to update)
   }
 
 -- | Address info options
@@ -1314,6 +1316,21 @@ runAddressBuild opts homeDir = do
                   writeFile outPath address
                   putStrLn $ "✅ Address built: " ++ address
                   putStrLn $ "💾 File saved at: " ++ outPath
+                  -- If initial amount and config are provided, append to config wallets with a genesis UTXO
+                  case buildInitialAmount opts of
+                    Nothing -> return ()
+                    Just lov -> do
+                      let defaultCfg = case buildNetwork opts of
+                            Mainnet -> "mainnet"
+                            Testnet -> "testnet"
+                            Preview -> "preview"
+                            Preprod -> "preprod"
+                          cfgDir = (homeDir </> "..") -- not used; prefer explicit config path
+                      let cfgPath = case buildConfigPath opts of
+                            Just p -> p
+                            Nothing -> inferWorkspaceConfig homeDir (buildNetwork opts)
+                      appendAddressToConfig cfgPath (T.pack address) lov
+                      putStrLn $ "🧩 Updated config with genesis UTXO: " ++ cfgPath
 
 -- | Run address info
 runAddressInfo :: AddressInfoOptions -> FilePath -> IO ()
@@ -1442,6 +1459,36 @@ runAppInit AppInitOptions {..} = do
   putStrLn $ "✅ Initialized COTS workspace at: " ++ netDir
   putStrLn $ "📝 Created config: " ++ cfgPath
 
+-- | Try to infer workspace config path based on network under ~/.cotscli
+inferWorkspaceConfig :: FilePath -> Network -> FilePath
+inferWorkspaceConfig homeDir net =
+  let netName = case net of
+        Mainnet -> "mainnet"
+        Testnet -> "testnet"
+        Preview -> "preview"
+        Preprod -> "preprod"
+      base = (takeWhile (/= "~") homeDir) -- crude; prefer explicit path in practice
+   in base </> ".cotscli" </> netName </> "config.json"
+
+-- | Append a wallet with a genesis UTXO to config.json
+appendAddressToConfig :: FilePath -> Text -> Word64 -> IO ()
+appendAddressToConfig cfgPath addr lov = do
+  exists <- doesFileExist cfgPath
+  if not exists
+    then putStrLn $ "❌ Config file not found: " ++ cfgPath
+    else do
+      mCfg <- Aeson.decodeFileStrict' cfgPath :: IO (Maybe Config)
+      case mCfg of
+        Nothing -> putStrLn $ "❌ Could not parse config: " ++ cfgPath
+        Just cfg -> do
+          now <- getCurrentTime
+          let newWallet = Wallet { name = T.pack ("wallet-" ++ take 8 (T.unpack (unAddress (Address addr))))
+                                 , address = Address addr
+                                 , utxos = [UTXO { txHash = TransactionId "genesis", txIx = TxIndex 0, amount = Amount lov mempty }]
+                                 }
+              updated = cfg { wallets = wallets cfg ++ [newWallet] }
+          LBS.writeFile cfgPath (encode updated)
+
 -- | Run version command
 runVersion :: FilePath -> IO ()
 runVersion _ = do
@@ -1560,6 +1607,8 @@ addressBuildOptions =
     <*> optional (strOption (long "stake-verification-key-file" <> metavar "FILE" <> help "Path to the stake verification key file"))
     <*> strOption (long "out-file" <> metavar "FILE" <> help "Path to the output address file")
     <*> option auto (long "network" <> metavar "NETWORK" <> help "Network (Mainnet, Testnet, Preview, Preprod)")
+    <*> optional (option auto (long "initial-amount" <> metavar "LOVELACE" <> help "Initial amount to assign to this address (lovelace) and add as genesis UTXO in config"))
+    <*> optional (strOption (long "config" <> metavar "FILE" <> help "Path to config.json to update (defaults to workspace config)"))
 
 addressInfoOptions :: Parser AddressInfoOptions
 addressInfoOptions = AddressInfoOptions <$> strOption (long "address" <> metavar "ADDRESS" <> help "Address to inspect")
