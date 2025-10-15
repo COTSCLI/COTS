@@ -1,71 +1,94 @@
-# 🏁 COTS CLI Command Examples — Complete Workflow
+# 🏁 COTS CLI — Exemples de commandes (pro, simple, structuré)
 
-## Working Directory and --home Option
+## Démarrage rapide (workspace par réseau)
 
-By default, all files (db, utxos, keys, etc.) are stored in `~/.COTS_NODE`.
-You can change this directory with the global `--home` option:
+1) Initialiser un workspace par réseau (par défaut: Preprod):
 
 ```bash
-cotscli --home /path/to/my_cots_home database init
+cotscli init --network Preprod
+# => crée ~/.cotscli/preprod/{keys,addresses,utxos,transactions,protocol,scripts} + config.json
 ```
 
-All following commands will use this directory as the root.
+2) Récupérer les paramètres de protocole (Koios) et les stocker:
+
+```bash
+cotscli protocol fetch \
+  --url https://api.koios.rest/api/v1/epoch_params \
+  --out-file ~/.cotscli/preprod/protocol/epoch_params.json \
+  --db-file ~/.cotscli/preprod/cots.db
+```
+
+3) Générer des clés et une adresse de paiement (+ solde initial dans config):
+
+```bash
+# clés
+cotscli address key-gen \
+  --verification-key-file payment.vkey \
+  --signing-key-file payment.skey
+
+# adresse + UTXO genesis (1 ADA) ajouté dans config.json
+cotscli address build \
+  --payment-verification-key-file payment.vkey \
+  --network Preprod \
+  --out-file ~/.cotscli/preprod/addresses/alice.addr \
+  --initial-amount 1000000 \
+  --config ~/.cotscli/preprod/config.json
+```
+
+4) Initialiser la base SQLite et importer la config automatiquement:
+
+```bash
+cotscli database init --db-file ~/.cotscli/preprod/cots.db
+```
 
 ---
 
-## 1. Initialize the SQLite Database
+## UTXO
+
+- Lister les UTXO (non dépensés) depuis la base:
 
 ```bash
-cotscli database init --db-file cots.db
+cotscli utxo list --utxo-file exported-utxos.json  # via export (voir plus bas)
 ```
 
-## 2. Import Test UTXOs
+- Réserver des UTXO pour un montant donné:
 
 ```bash
-cotscli database import-utxo --db-file cots.db --utxo-file utxos.json
+cotscli utxo reserve \
+  --address $(cat ~/.cotscli/preprod/addresses/alice.addr) \
+  --amount 2000000 \
+  --utxo-file exported-utxos.json \
+  --out-file reserved-utxos.json
 ```
 
-## 3. Generate a Payment Key Pair
+- Exporter/Importer des UTXO (JSON):
 
 ```bash
-cotscli address key-gen --verification-key-file payment.vkey --signing-key-file payment.skey
+cotscli database export-utxo \
+  --db-file ~/.cotscli/preprod/cots.db \
+  --out-file exported-utxos.json
+
+cotscli database import-utxo \
+  --db-file ~/.cotscli/preprod/cots.db \
+  --utxo-file imported-utxos.json
 ```
 
-## 4. Build an Address from the Public Key
+---
 
-```bash
-cotscli address build \
-  --payment-verification-key-file payment.vkey \
-  --testnet-magic 1097911063 \
-  --out-file address.addr
-```
+## Transactions (offline)
 
-## 5. List Available UTXOs
-
-```bash
-cotscli utxo list --db-file cots.db
-```
-
-## 6. Build a Transaction
+- Construire:
 
 ```bash
 cotscli transaction build \
   --tx-in <TXID>#<TXIX> \
-  --tx-out $(cat address.addr)+1000000 \
-  --change-address $(cat address.addr) \
-  --db-file cots.db \
+  --tx-out $(cat ~/.cotscli/preprod/addresses/alice.addr)+1000000 \
+  --change-address $(cat ~/.cotscli/preprod/addresses/alice.addr) \
+  --db-file ~/.cotscli/preprod/cots.db \
   --out-file tx.raw
 ```
 
-## 7. Estimate Transaction Fees
-
-```bash
-cotscli transaction estimate-fee \
-  --tx-file tx.raw \
-  --db-file cots.db
-```
-
-## 8. Sign a Transaction (offline)
+- Signer (offline):
 
 ```bash
 cotscli transaction sign \
@@ -74,76 +97,78 @@ cotscli transaction sign \
   --out-file tx.signed
 ```
 
-## 9. Simulate a Transaction
+- Simuler et valider:
 
 ```bash
-cotscli transaction simulate \
-  --tx-file tx.signed \
-  --db-file cots.db
+cotscli transaction simulate --tx-file tx.signed --db-file ~/.cotscli/preprod/cots.db
+cotscli transaction validate --tx-file tx.signed --db-file ~/.cotscli/preprod/cots.db
 ```
 
-## 10. Validate a Transaction
+- Exporter / Décoder:
 
 ```bash
-cotscli transaction validate \
-  --tx-file tx.signed \
-  --db-file cots.db
-```
-
-## 11. Export a Transaction (Cardano CLI format)
-
-```bash
-cotscli transaction export \
-  --tx-file tx.signed \
-  --format cardano-cli \
-  --out-file tx.exported
-```
-
-## 12. Decode a Transaction
-
-```bash
+cotscli transaction export --tx-file tx.signed --format CardanoCLI --out-file tx.cli
 cotscli transaction decode --tx-file tx.signed --verbose
-```
-
-## 13. Import a Wallet from a JSON File
-
-```bash
-cotscli wallet import \
-  --file wallet.json \
-  --db-file cots.db
-```
-
-## 14. Export a Wallet to a JSON File
-
-```bash
-cotscli wallet export \
-  --name <WALLET_NAME> \
-  --db-file cots.db \
-  --file wallet.json
-```
-
-## 15. Reserve UTXOs for a Given Amount
-
-```bash
-cotscli utxo reserve \
-  --address $(cat address.addr) \
-  --amount 1000000 \
-  --db-file cots.db \
-  --out-file reserved-utxos.json
-```
-
-## 16. Update Protocol Parameters
-
-```bash
-cotscli protocol update \
-  --file protocol-params.json \
-  --db-file cots.db
 ```
 
 ---
 
-**Notes:**
+## Wallets
 
-- Replace `<TXID>`, `<TXIX>`, `<WALLET_NAME>`, etc. with actual values from your environment.
-- File paths (`payment.vkey`, `address.addr`, etc.) are relative to your current working directory.
-- For more details on each command, use `--help` (e.g., `cotscli transaction build --help`).
+```bash
+cotscli wallet create --name alice --address $(cat ~/.cotscli/preprod/addresses/alice.addr) --db-file ~/.cotscli/preprod/cots.db
+cotscli wallet list --db-file ~/.cotscli/preprod/cots.db
+cotscli wallet info --name alice --db-file ~/.cotscli/preprod/cots.db
+cotscli wallet export --name alice --db-file ~/.cotscli/preprod/cots.db --file alice.wallet.json
+cotscli wallet import --file alice.wallet.json --db-file ~/.cotscli/preprod/cots.db
+```
+
+---
+
+## Adresses de staking et Mint (optionnel)
+
+```bash
+# Stake
+cotscli stake-address key-gen --verification-key-file stake.vkey --signing-key-file stake.skey
+cotscli stake-address build --stake-verification-key-file stake.vkey --network Preprod --out-file stake.addr
+
+# Mint
+cotscli mint build --out-file mint.raw --network Preprod --protocol-params-file ~/.cotscli/preprod/protocol/epoch_params.json
+cotscli mint calculate --policy-id <POLICY> --asset-name TOKEN --quantity 100 --protocol-params-file ~/.cotscli/preprod/protocol/epoch_params.json
+```
+
+---
+
+## Paramètres de protocole
+
+```bash
+# Récupérer depuis Koios et stocker
+cotscli protocol fetch \
+  --url https://api.koios.rest/api/v1/epoch_params \
+  --out-file ~/.cotscli/preprod/protocol/epoch_params.json \
+  --db-file ~/.cotscli/preprod/cots.db
+
+# Mettre à jour depuis un fichier local
+cotscli protocol update \
+  --protocol-params-file ~/.cotscli/preprod/protocol/epoch_params.json \
+  --db-file ~/.cotscli/preprod/cots.db
+```
+
+---
+
+## Base de données
+
+```bash
+cotscli database inspect --db-file ~/.cotscli/preprod/cots.db
+cotscli database snapshot --db-file ~/.cotscli/preprod/cots.db --out-file snapshot.db
+cotscli database load-snapshot --snapshot-file snapshot.db --db-file ~/.cotscli/preprod/cots.db
+cotscli database reset --db-file ~/.cotscli/preprod/cots.db
+```
+
+---
+
+## Aide
+
+- Tous les sous-commandes exposent `--help`.
+- Réseaux supportés pour `--network`: `Mainnet`, `Testnet`, `Preview`, `Preprod` (par défaut: `Preprod`).
+- Les montants sont en lovelace (1 ADA = 1_000_000 lovelace).
