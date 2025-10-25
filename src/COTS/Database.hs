@@ -133,7 +133,8 @@ exportUTXOs db = do
         UTXO
           { txHash = TransactionId dbTxHash,
             txIx = TxIndex (fromIntegral dbTxIx),
-            amount = Amount {lovelace = fromIntegral dbAmount, assets = assetsMap}
+            amount = Amount {lovelace = fromIntegral dbAmount, assets = assetsMap},
+            ownerAddress = dbAddress
           }
 
 -- | Import UTXOs from COTS.Types format
@@ -146,7 +147,7 @@ importUTXOs db utxos = do
       execute
         conn
         "INSERT OR REPLACE INTO utxos (tx_hash, tx_ix, address, amount, assets, spent) VALUES (?,?,?,?,?,?)"
-        (unTransactionId txHash :: Text, fromIntegral (unTxIndex txIx) :: Int, "unknown" :: Text, fromIntegral (lovelace amount) :: Integer, assetsJson :: String, 0 :: Int)
+        (unTransactionId txHash :: Text, fromIntegral (unTxIndex txIx) :: Int, T.unpack ownerAddress :: String, fromIntegral (lovelace amount) :: Integer, assetsJson :: String, 0 :: Int)
 
 -- | Transaction type for DB
 data DBTransaction = DBTransaction

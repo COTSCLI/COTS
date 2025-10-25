@@ -149,7 +149,8 @@ instance ToJSON Amount
 data UTXO = UTXO
   { txHash :: TransactionId,
     txIx :: TxIndex,
-    amount :: Amount
+    amount :: Amount,
+    ownerAddress :: Text  -- Address that owns this UTXO
   }
   deriving (Eq, Show, Generic)
 

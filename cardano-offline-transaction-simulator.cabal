@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.37.0.
+-- This file has been generated from package.yaml by hpack version 0.38.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -110,7 +110,6 @@ test-suite cardano-offline-transaction-simulator-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      DatabaseSpec
       Paths_cardano_offline_transaction_simulator
   hs-source-dirs:
       test

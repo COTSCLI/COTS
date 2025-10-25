@@ -34,3 +34,4 @@ jobs:
           path: |
             sbom.spdx.json
             sbom.cdx.json
+
