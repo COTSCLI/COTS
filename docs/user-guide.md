@@ -14,6 +14,7 @@ COTS (Cardano Offline Transaction Simulator) is a professional command-line tool
 - **🔐 Unique Key Generation**: Cryptographically secure key generation
 - **📊 Realistic Transaction Hashes**: 64-character hexadecimal transaction IDs
 - **⚡ Professional Feedback**: Clear progress indicators and status messages
+- **🔄 Complete Transaction Workflow**: Automated `build-raw` → `calculate-min-fee` → `sign` → `submit` → `txid` process
 
 ## Installation
 
@@ -48,677 +49,531 @@ COTS CLI provides a premium command-line experience with:
 
 ### Default Configuration
 
-COTS stores all data in `~/.COTS_NODE/` directory by default:
+COTS creates a structured workspace in your home directory:
 
-- Database: `~/.COTS_NODE/cots.db`
-- Keys: `~/.COTS_NODE/keys/`
-- Addresses: `~/.COTS_NODE/addresses/`
-- UTXOs: `~/.COTS_NODE/utxos/`
-- Transactions: `~/.COTS_NODE/transactions/`
-- Protocol: `~/.COTS_NODE/protocol/`
-- Scripts: `~/.COTS_NODE/scripts/`
+```
+~/.cotscli/
+├── preprod/          # Preprod network configuration
+│   ├── config.json   # Network-specific configuration
+│   ├── keys/         # Key files (.vkey, .skey)
+│   ├── addresses/    # Address files (.addr)
+│   ├── utxos/        # UTXO JSON files
+│   ├── transactions/ # Transaction files (.raw, .signed)
+│   ├── protocol/     # Protocol parameter files
+│   └── scripts/      # Script files
+├── mainnet/          # Mainnet network configuration
+├── testnet/          # Testnet network configuration
+└── preview/          # Preview network configuration
+```
 
-### Custom Workspace with --home
+### Custom Workspace with `--home`
 
-Use the `--home` option to specify a custom workspace directory:
+Use the `--home` parameter to specify custom workspace locations:
 
 ```bash
 # Initialize custom workspace
 cotscli --home ~/my-project init --path ~/my-project --name "My Project" --network Preprod
 
 # All subsequent commands use the custom workspace
+cotscli --home ~/my-project database init --db-file project.db
 cotscli --home ~/my-project address key-gen --verification-key-file alice.vkey --signing-key-file alice.skey
-cotscli --home ~/my-project database init --db-file project.db
 ```
 
-## 🗄️ Database Management
+## 🚀 Quick Start Guide
 
-### Initialize Database
-
-Initialize a new SQLite database with professional feedback:
+### 1. Initialize Your Workspace
 
 ```bash
-cotscli --home ~/my-project database init --db-file project.db
-# ▶ Initializing SQLite database and COTS home structure...
-# ℹ Database file: project.db
-# ℹ Created directory: ~/my-project/keys
-# ℹ Created directory: ~/my-project/addresses
-# ℹ Created directory: ~/my-project/utxos
-# ℹ Created directory: ~/my-project/transactions
-# ℹ Created directory: ~/my-project/protocol
-# ℹ Created directory: ~/my-project/scripts
-# ✅ Database and home structure initialized successfully!
+# Initialize with custom home directory
+cotscli --home ~/my-cots init --path ~/my-cots --name "My COTS Project" --network Preprod
 ```
 
-### Inspect Database
-
-View database statistics with professional formatting:
+### 2. Set Up Database
 
 ```bash
-cotscli --home ~/my-project database inspect --db-file project.db
-# ▶ Inspecting database...
-# ℹ Database file: project.db
-# 📊 Database Statistics:
-#    UTXOs (unspent): 3
-#    UTXOs (spent): 0
-#    Total lovelace: 35000000
-#    Transactions: 0
-#    Wallets: 3
-#    Protocol Parameters: 0
+# Initialize SQLite database
+cotscli --home ~/my-cots database init --db-file myproject.db
 ```
 
-### Reset Database
-
-⚠️ **Dangerous**: Completely wipes the database:
+### 3. Generate Keys and Addresses
 
 ```bash
-cotscli database reset --db-file cots.db
+# Generate key pair
+cotscli --home ~/my-cots address key-gen \
+  --verification-key-file alice.vkey \
+  --signing-key-file alice.skey
+
+# Build address
+cotscli --home ~/my-cots address build \
+  --payment-verification-key-file alice.vkey \
+  --out-file alice.addr \
+  --network Preprod \
+  --initial-amount 10000000
 ```
 
-### Snapshot Operations
-
-Create a database snapshot:
+### 4. Generate and Import Initial UTXOs
 
 ```bash
-cotscli database snapshot --db-file cots.db --out-file snapshot.db
+# Generate initial UTXOs automatically
+cotscli --home ~/my-cots database generate-utxo \
+  --addresses "$(cat ~/my-cots/addresses/alice.addr)" \
+  --amounts "10000000" \
+  --out-file initial-utxos.json
+
+# Import UTXOs
+cotscli --home ~/my-cots database import-utxo \
+  --utxo-file initial-utxos.json \
+  --db-file myproject.db
 ```
 
-Load from snapshot:
+### 5. Create Wallets
 
 ```bash
-cotscli database load-snapshot --snapshot-file snapshot.db --db-file cots.db
+# Create wallet
+cotscli --home ~/my-cots wallet create \
+  --name "Alice" \
+  --address "$(cat ~/my-cots/addresses/alice.addr)" \
+  --db-file myproject.db
 ```
 
-### Import/Export UTXOs
-
-Import UTXOs from JSON file:
+### 6. Send Transactions (NEW WORKFLOW)
 
 ```bash
-cotscli database import-utxo --db-file cots.db --utxo-file utxos.json
+# Complete transaction workflow
+cotscli --home ~/my-cots transaction send \
+  --from-address "$(cat ~/my-cots/addresses/alice.addr)" \
+  --to-address "$(cat ~/my-cots/addresses/bob.addr)" \
+  --amount 500000 \
+  --db-file myproject.db \
+  --out-file tx1 \
+  --signing-key-file alice.skey \
+  --testnet-magic 1
 ```
 
-Export UTXOs to JSON file:
+## 💰 Transaction Management
+
+### NEW: Complete Transaction Workflow
+
+The `transaction send` command orchestrates the full Cardano CLI workflow automatically:
+
+1. **Build Raw Transaction** - Creates transaction body
+2. **Calculate Minimum Fee** - Determines optimal fee
+3. **Sign Transaction** - Signs with private key
+4. **Submit Transaction** - Simulates submission
+5. **Get Transaction ID** - Generates unique hash
+6. **Update UTXOs** - Updates database with new UTXOs
 
 ```bash
-cotscli database export-utxo --db-file cots.db --out-file utxos.json
-```
-
-## Wallet Management
-
-### Create Wallet
-
-Create a new wallet:
-
-```bash
-cotscli wallet create --name alice --address addr_test1qalice --db-file cots.db
-```
-
-### List Wallets
-
-List all wallets in the database:
-
-```bash
-cotscli wallet list --db-file cots.db
-```
-
-### Wallet Information
-
-Show detailed information about a wallet:
-
-```bash
-cotscli wallet info --name alice --db-file cots.db
-```
-
-### Import/Export Wallets
-
-Import wallet from JSON file:
-
-```bash
-cotscli wallet import --file wallet.json --db-file cots.db
-```
-
-Export wallet to JSON file:
-
-```bash
-cotscli wallet export --name alice --file wallet.json --db-file cots.db
-```
-
-## 🔍 UTXO Management
-
-### Query UTXOs (Cardano CLI Compatible)
-
-Query UTXOs with professional formatting and colorized output:
-
-```bash
-cotscli --home ~/my-project query utxo \
-  --address $(cat alice.addr) \
-  --testnet-magic 1 \
-  --db-file project.db
-# ▶ Querying UTXOs for address: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
-# ℹ Testnet magic: 1
-# ℹ Using default socket path
-# 
-# ═══ UTXO Query Results ═══
-# 
-# TxHash │ TxIx │ Amount
-# ─────────────────────────────────────────────────────────────────────────
-# genesis_alice_0000000000000000000000000000000000000000000000000...    0    10000000 lovelace
-# ℹ Found 1 UTXOs
-```
-
-### Import UTXOs with Correct JSON Format
-
-Import UTXOs using the proper JSON format:
-
-```bash
-# Create UTXO file with correct format
-cat > utxos.json << 'EOF'
-[
-  {
-    "txHash": {"unTransactionId": "genesis_alice_0000000000000000000000000000000000000000000000000000000000000000"},
-    "txIx": {"unTxIndex": 0},
-    "amount": {"lovelace": 10000000, "assets": []}
-  }
-]
-EOF
-
-# Import with professional feedback
-cotscli --home ~/my-project database import-utxo \
-  --utxo-file utxos.json \
-  --db-file project.db
-# ▶ Importing UTXOs from JSON file...
-# ℹ Database file: ~/my-project/project.db
-# ℹ UTXO file: utxos.json
-# ✅ Imported 1 UTXOs successfully!
-```
-
-### List UTXOs with Professional Formatting
-
-```bash
-cotscli --home ~/my-project utxo list --utxo-file exported-utxos.json
-# ▶ Reading UTXOs from file: exported-utxos.json
-#                                TxHash                                 TxIx        Amount
-# --------------------------------------------------------------------------------------
-# genesis_alice_0000000000000000000000000000000000000000000000000...    0    10000000 lovelace
-```
-
-### Reserve UTXOs
-
-Reserve UTXOs for a specific amount:
-
-```bash
-cotscli --home ~/my-project utxo reserve \
-  --address $(cat alice.addr) \
+cotscli --home ~/workspace transaction send \
+  --from-address "$(cat alice.addr)" \
+  --to-address "$(cat bob.addr)" \
   --amount 1000000 \
-  --utxo-file exported-utxos.json \
-  --out-file reserved.json
+  --db-file project.db \
+  --out-file my-tx \
+  --signing-key-file alice.skey \
+  --testnet-magic 1
 ```
 
-## 💸 Transaction Operations (Cardano CLI Compatible)
+**Professional Output:**
+```
+▶ Starting transaction workflow...
+ℹ From: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
+ℹ To: addr_test1a8b2016c6583c4fbe6379fdc1facfb6e2acae11528ebf9475616543762d3259b
+ℹ Amount: 1000000 lovelace
+▶ Step 1: Building raw transaction...
+✅ Raw transaction built successfully!
+▶ Step 2: Calculating minimum fee...
+ℹ Calculated fee: 200000 lovelace
+▶ Step 3: Signing transaction...
+✅ Transaction signed successfully!
+▶ Step 4: Submitting transaction...
+✅ Transaction successfully submitted.
+▶ Step 5: Getting transaction ID...
+✅ Transaction ID: e4fe21e4cd39b8043815fd989e61bdf7f337cc9e1c8aa816af80000000000000
+▶ Updating UTXOs in database...
+✅ UTXOs updated in database!
 
-### Build Raw Transaction
+═══ Transaction Complete ═══
 
-Build a raw transaction with professional formatting:
+✅ Amount sent: 1000000 lovelace
+✅ Fee paid: 200000 lovelace
+✅ Change returned: 8800000 lovelace
+✅ Transaction ID: e4fe21e4cd39b8043815fd989e61bdf7f337cc9e1c8aa816af80000000000000
+✅ Files created: my-tx.raw, my-tx.signed
+```
+
+### Individual Transaction Commands
+
+For advanced users who need granular control:
 
 ```bash
-cotscli --home ~/my-project transaction build-raw \
-  --babbage-era babbage-era \
-  --tx-in "genesis_alice_0000000000000000000000000000000000000000000000000000000000000000#0" \
-  --tx-out "$(cat bob.addr)+3000000" \
-  --tx-out "$(cat alice.addr)+6800000" \
+# Build raw transaction
+cotscli --home ~/workspace transaction build-raw \
+  --babbage-era \
+  --tx-in txhash#0 \
+  --tx-out addr+amount \
   --fee 200000 \
   --out-file tx.raw
-# ▶ Building raw transaction...
-# ℹ Era: babbage-era
-# ℹ Transaction inputs: 1
-# ℹ Transaction outputs: 2
-# ℹ Fee: 200000 lovelace
-# ℹ Output file: tx.raw
-# ✅ Raw transaction built successfully!
-# ℹ Transaction saved to: tx.raw
-```
 
-### Calculate Minimum Fee
-
-Calculate transaction fees with detailed breakdown:
-
-```bash
-cotscli --home ~/my-project transaction calculate-min-fee \
+# Calculate minimum fee
+cotscli --home ~/workspace transaction calculate-min-fee \
   --tx-body-file tx.raw \
   --tx-in-count 1 \
   --tx-out-count 2 \
   --witness-count 1 \
   --testnet-magic 1 \
   --protocol-params-file protocol.json
-# ▶ Calculating minimum transaction fee...
-# ℹ Transaction body file: tx.raw
-# ℹ Input count: 1
-# ℹ Output count: 2
-# ℹ Witness count: 1
-# ℹ Protocol parameters: protocol.json
-# ℹ Testnet magic: 1
-# ✅ Fee calculation completed!
-# 
-# ▸ Fee Breakdown
-# 
-# ℹ Minimum fee: 156513 lovelace
-# ℹ Base fee: 155513 lovelace
-# ℹ Witness fee: 1000 lovelace
-```
 
-### Sign Transaction
-
-Sign a transaction with professional feedback:
-
-```bash
-cotscli --home ~/my-project transaction sign \
-  --tx-file tx.raw \
-  --signing-key-file ~/my-project/keys/alice.skey \
+# Sign transaction
+cotscli --home ~/workspace transaction sign \
+  --tx-body-file tx.raw \
+  --signing-key-file key.skey \
+  --testnet-magic 1 \
   --out-file tx.signed
-# ✍️ Signing transaction (offline)...
-# ℹ Transaction file: tx.raw
-# ℹ Signing key file: ~/my-project/keys/alice.skey
-# ℹ Output file: tx.signed
-# ℹ Transaction loaded from file
-# ℹ Signing key loaded
-# ✅ Transaction signed successfully!
-# ℹ Signed transaction saved to: tx.signed
-```
 
-### Submit Transaction (Simulation)
-
-Submit a transaction with simulation feedback:
-
-```bash
-cotscli --home ~/my-project transaction submit \
+# Submit transaction
+cotscli --home ~/workspace transaction submit \
   --tx-file tx.signed \
   --testnet-magic 1
-# ▶ Submitting transaction...
-# ℹ Transaction file: tx.signed
-# ℹ Testnet magic: 1
-# ℹ Using default socket path
-# ✅ Transaction submitted successfully!
-# 
-# ▸ Transaction Details
-# 
-# ℹ Transaction ID: placeholder_tx_id
-# ⚠ This is a simulation - no actual network submission
+
+# Get transaction ID
+cotscli --home ~/workspace transaction txid --tx-file tx.signed
 ```
 
-### Calculate Transaction ID
+## 🔍 UTXO Management
 
-Calculate transaction ID with professional formatting:
-
-```bash
-cotscli --home ~/my-project transaction txid --tx-file tx.signed
-# ▶ Calculating transaction ID...
-# ℹ Transaction file: tx.signed
-# ℹ Transaction loaded from file
-# ✅ Transaction ID calculated!
-# 
-# ▸ Transaction ID
-# 
-# ℹ Transaction ID: placeholder_tx_id_90
-```
-
-### Validate Transaction
-
-Validate a transaction with detailed feedback:
+### Query UTXOs (Cardano CLI Compatible)
 
 ```bash
-cotscli --home ~/my-project transaction validate \
-  --tx-file tx.signed \
+# Query UTXOs for an address
+cotscli --home ~/workspace query utxo \
+  --address $(cat alice.addr) \
+  --testnet-magic 1 \
   --db-file project.db
-# ▶ Validating transaction...
-# ℹ Transaction file: tx.signed
-# ℹ Database file: project.db
-# ℹ Transaction loaded from file
-# ✅ Transaction validation passed!
-# Validation details:
-#   ✓ Transaction format is valid
-#   ✓ All inputs are available
-#   ✓ Fee calculation is correct
-#   ✓ Script execution units are within limits
 ```
 
-## Protocol Management
+**Professional Output:**
+```
+▶ Querying UTXOs for address: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
+ℹ Testnet magic: 1
+ℹ Using default socket path
 
-### Update Protocol Parameters
+═══ UTXO Query Results ═══
 
-Update protocol parameters in the database:
+TxHash │ TxIx │ Amount
+─────────────────────────────────────────────────────────────────────────
+e4fe21e4cd39b8043815fd989e61bdf7f337cc9e1c8aa816af80000000000000    0    1000000 lovelace
+fb9e3d7c245e72dfbbd1b9a8ba247c367aa12206469aab424360000000000000    1    8800000 lovelace
+ℹ Found 2 UTXOs
+```
+
+### Generate Initial UTXOs
 
 ```bash
-cotscli protocol update \
-  --protocol-params-file params.json \
-  --db-file cots.db
+# Generate initial UTXOs automatically
+cotscli --home ~/workspace database generate-utxo \
+  --addresses "$(cat alice.addr),$(cat bob.addr)" \
+  --amounts "10000000,5000000" \
+  --out-file initial-utxos.json \
+  --prefix "genesis"
 ```
 
-## 🏠 Address Management
+### Import/Export UTXOs
+
+```bash
+# Import UTXOs from JSON file
+cotscli --home ~/workspace database import-utxo \
+  --utxo-file initial-utxos.json \
+  --db-file project.db
+
+# Export UTXOs to JSON file
+cotscli --home ~/workspace database export-utxo \
+  --out-file exported-utxos.json \
+  --db-file project.db
+```
+
+## 👛 Wallet Management
+
+### Create Wallets
+
+```bash
+# Create a new wallet
+cotscli --home ~/workspace wallet create \
+  --name "Alice" \
+  --address "$(cat alice.addr)" \
+  --db-file project.db
+```
+
+### List Wallets
+
+```bash
+# List all wallets
+cotscli --home ~/workspace wallet list --db-file project.db
+```
+
+**Professional Output:**
+```
+▶ Listing all wallets...
+
+═══ Wallet List ═══
+
+Name  │ Address                                    │ Created
+────────────────────────────────────────────────────────────────────────
+Alice │ addr_test1782de20fb78e40885fb198dfb33... │ 2024-01-15 10:30:00
+Bob   │ addr_test1a8b2016c6583c4fbe6379fdc1fa... │ 2024-01-15 10:31:00
+ℹ Found 2 wallets
+```
+
+### Get Wallet Information
+
+```bash
+# Get detailed wallet information
+cotscli --home ~/workspace wallet info --name "Alice" --db-file project.db
+```
+
+## 🔑 Address Management
 
 ### Generate Keys
 
-Generate payment key pair with professional feedback:
-
 ```bash
-cotscli --home ~/my-project address key-gen \
+# Generate payment key pair
+cotscli --home ~/workspace address key-gen \
   --verification-key-file alice.vkey \
   --signing-key-file alice.skey
-# ▶ Generating payment key pair...
-# ℹ Verification key: ~/my-project/keys/alice.vkey
-# ℹ Signing key: ~/my-project/keys/alice.skey
-# ✅ Payment key pair generated successfully!
-# ℹ Files saved in: ~/my-project/keys
 ```
 
-### Build Address
-
-Build address from verification key with colorized output:
+### Build Addresses
 
 ```bash
-cotscli --home ~/my-project address build \
+# Build payment address
+cotscli --home ~/workspace address build \
   --payment-verification-key-file alice.vkey \
   --out-file alice.addr \
   --network Preprod \
   --initial-amount 10000000
-# ▶ Building Cardano address...
-# ✅ Address built: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
-# ℹ File saved at: alice.addr
 ```
 
-### Address Information
-
-Show address details:
+### Generate Stake Keys (Optional)
 
 ```bash
-cotscli --home ~/my-project address info --address $(cat alice.addr)
-# ▶ Address information:
-# ℹ Address: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
-# Type: Payment address
-# Network: Testnet
-# Format: Bech32
-```
-
-## Stake Address Management
-
-### Generate Stake Keys
-
-Generate stake key pair:
-
-```bash
-cotscli stake-address key-gen \
+# Generate stake key pair
+cotscli --home ~/workspace stake-address key-gen \
   --verification-key-file stake.vkey \
   --signing-key-file stake.skey
-```
 
-### Build Stake Address
-
-Build stake address:
-
-```bash
-cotscli stake-address build \
+# Build stake address
+cotscli --home ~/workspace stake-address build \
   --stake-verification-key-file stake.vkey \
   --out-file stake.addr \
-  --mainnet
+  --network Preprod
 ```
 
-### Stake Address Information
+## 🗄️ Database Management
 
-Show stake address details:
+### Initialize Database
 
 ```bash
-cotscli stake-address info --address stake_test1qalice
+# Initialize SQLite database
+cotscli --home ~/workspace database init --db-file project.db
 ```
 
-## Minting Operations
-
-### Build Minting Transaction
-
-Build a transaction with minting:
+### Database Snapshots
 
 ```bash
-cotscli mint build \
-  --tx-in "1234567890abcdef#0" \
-  --tx-out "addr_test1qbob+1000000" \
-  --mint "100 policy123.token456" \
-  --mint-script-file policy.script \
-  --out-file mint.raw \
-  --mainnet \
-  --protocol-params-file params.json
+# Create database snapshot
+cotscli --home ~/workspace database snapshot \
+  --db-file project.db \
+  --out-file snapshot.json
+
+# Load database snapshot
+cotscli --home ~/workspace database load-snapshot \
+  --db-file project.db \
+  --snapshot-file snapshot.json
 ```
 
-### Calculate Minting Fees
-
-Calculate fees for minting:
+### Database Inspection
 
 ```bash
-cotscli mint calculate \
-  --policy-id policy123 \
-  --asset-name token456 \
-  --quantity 100 \
-  --protocol-params-file params.json
+# Inspect database and get statistics
+cotscli --home ~/workspace database inspect --db-file project.db
 ```
 
-## 🚀 Complete Professional Workflow Example
+## ⚙️ Protocol Parameters
 
-### Step-by-Step Transaction Workflow
-
-1. **Initialize Workspace**:
+### Update Protocol Parameters
 
 ```bash
-cotscli --home ~/my-project init --path ~/my-project --name "Professional Demo" --network Preprod
-# ✅ SUCCESS: Initialized COTS workspace at: ~/my-project/preprod
-# ℹ Created config: ~/my-project/preprod/config.json
+# Update from local file
+cotscli --home ~/workspace protocol update \
+  --file protocol.json \
+  --db-file project.db
 ```
 
-2. **Generate Keys**:
+### Fetch Protocol Parameters
 
 ```bash
-cotscli --home ~/my-project address key-gen --verification-key-file alice.vkey --signing-key-file alice.skey
-cotscli --home ~/my-project address key-gen --verification-key-file bob.vkey --signing-key-file bob.skey
-# ▶ Generating payment key pair...
-# ✅ Payment key pair generated successfully!
+# Fetch from Koios API
+cotscli --home ~/workspace protocol fetch \
+  --url https://api.koios.rest/api/v0/epoch_params \
+  --out-file protocol.json \
+  --db-file project.db
 ```
 
-3. **Build Addresses**:
+## 🎯 Advanced Features
+
+### Transaction Validation
 
 ```bash
-cotscli --home ~/my-project address build --payment-verification-key-file alice.vkey --out-file alice.addr --network Preprod
-cotscli --home ~/my-project address build --payment-verification-key-file bob.vkey --out-file bob.addr --network Preprod
-# ▶ Building Cardano address...
-# ✅ Address built: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
+# Validate transaction
+cotscli --home ~/workspace transaction validate \
+  --tx-file tx.signed \
+  --db-file project.db
 ```
 
-4. **Initialize Database**:
+### Transaction Simulation
 
 ```bash
-cotscli --home ~/my-project database init --db-file demo.db
-# ▶ Initializing SQLite database and COTS home structure...
-# ✅ Database and home structure initialized successfully!
+# Simulate transaction
+cotscli --home ~/workspace transaction simulate \
+  --tx-file tx.signed \
+  --db-file project.db
 ```
 
-5. **Create Initial UTXOs**:
+### Transaction Viewing
 
 ```bash
-echo '[{"txHash": {"unTransactionId": "genesis_alice_0000000000000000000000000000000000000000000000000000000000000000"}, "txIx": {"unTxIndex": 0}, "amount": {"lovelace": 10000000, "assets": []}}]' > utxos.json
-cotscli --home ~/my-project database import-utxo --utxo-file utxos.json --db-file demo.db
-# ▶ Importing UTXOs from JSON file...
-# ✅ Imported 1 UTXOs successfully!
+# View transaction details
+cotscli --home ~/workspace transaction view \
+  --tx-file tx.signed \
+  --verbose
 ```
 
-6. **Build Transaction**:
+### Transaction Export
 
 ```bash
-cotscli --home ~/my-project transaction build-raw \
-  --babbage-era babbage-era \
-  --tx-in "genesis_alice_0000000000000000000000000000000000000000000000000000000000000000#0" \
-  --tx-out "$(cat bob.addr)+3000000" \
-  --tx-out "$(cat alice.addr)+6800000" \
-  --fee 200000 \
-  --out-file tx.raw
-# ▶ Building raw transaction...
-# ✅ Raw transaction built successfully!
+# Export transaction in different formats
+cotscli --home ~/workspace transaction export \
+  --tx-file tx.signed \
+  --format CardanoCLI \
+  --out-file exported-tx.json
 ```
 
-7. **Sign Transaction**:
+## 🔧 Configuration
 
-```bash
-cotscli --home ~/my-project transaction sign \
-  --tx-file tx.raw \
-  --signing-key-file ~/my-project/keys/alice.skey \
-  --out-file tx.signed
-# ✍️ Signing transaction (offline)...
-# ✅ Transaction signed successfully!
+### Network Configuration
+
+COTS supports multiple networks:
+
+- **Mainnet**: Production Cardano network
+- **Testnet**: Legacy testnet
+- **Preview**: Preview testnet
+- **Preprod**: Preproduction testnet
+
+### Custom Configuration
+
+Each network has its own configuration file:
+
+```json
+{
+  "network": "Preprod",
+  "protocolParameters": {
+    "minFeeA": 44,
+    "minFeeB": 155381,
+    "maxTxSize": 16384,
+    "maxValSize": 5000,
+    "keyDeposit": 2000000,
+    "poolDeposit": 500000000,
+    "minPoolCost": 340000000,
+    "coinsPerUtxoWord": 34482,
+    "maxCollateralInputs": 3,
+    "collateralPercentage": 150,
+    "maxBlockExecutionUnits": {
+      "memory": 50000000,
+      "steps": 40000000000
+    },
+    "maxTxExecutionUnits": {
+      "memory": 14000000,
+      "steps": 10000000000
+    },
+    "maxValueSize": 5000,
+    "collateralPercentage": 150,
+    "maxCollateralInputs": 3
+  },
+  "wallets": []
+}
 ```
 
-8. **Validate Transaction**:
+## 🚀 Best Practices
 
-```bash
-cotscli --home ~/my-project transaction validate --tx-file tx.signed --db-file demo.db
-# ▶ Validating transaction...
-# ✅ Transaction validation passed!
-```
+### 1. Workspace Organization
 
-9. **Query UTXOs**:
+- Always use the `--home` parameter for consistent workspace management
+- Organize files in the appropriate subdirectories (keys/, addresses/, utxos/, etc.)
+- Use descriptive names for your projects
 
-```bash
-cotscli --home ~/my-project query utxo --address $(cat alice.addr) --testnet-magic 1 --db-file demo.db
-# ▶ Querying UTXOs for address: addr_test1782de20fb78e40885fb198dfb33caa2cead538c833db9c25dfd20c655c74c715
-# ═══ UTXO Query Results ═══
-# TxHash │ TxIx │ Amount
-# ─────────────────────────────────────────────────────────────────────────
-# genesis_alice_0000000000000000000000000000000000000000000000000...    0    10000000 lovelace
-# ℹ Found 1 UTXOs
-```
+### 2. Transaction Management
 
-### Database Backup and Restore
+- Use `transaction send` for complete workflows
+- Always verify UTXOs after transactions with `query utxo`
+- Keep transaction files organized in the transactions/ directory
 
-1. **Create Snapshot**:
+### 3. Database Management
 
-```bash
-cotscli --home ~/my-project database snapshot --db-file demo.db --out-file backup.db
-# ▶ Creating database snapshot...
-# ✅ Snapshot created successfully!
-```
+- Create regular snapshots of your database
+- Use descriptive database file names
+- Monitor database size and performance
 
-2. **Restore from Snapshot**:
+### 4. Security
 
-```bash
-cotscli --home ~/my-project database load-snapshot --snapshot-file backup.db --db-file restored.db
-# ▶ Loading database snapshot...
-# ✅ Snapshot loaded successfully!
-```
+- Keep private keys secure and never share them
+- Use testnet for development and testing
+- Regularly backup your workspace
 
-## Troubleshooting
+### 5. Professional Output
+
+- Take advantage of the colorized output for better readability
+- Use verbose options when needed for detailed information
+- Follow the professional formatting for consistent experience
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **Database not found**: Ensure the database file exists and has proper permissions
-2. **UTXO not found**: Check that UTXOs have been imported into the database
-3. **Wallet not found**: Verify the wallet name exists in the database
-4. **Permission errors**: Check file permissions for `~/.COTS_NODE/` directory
+1. **"Config file not found"**
+   - Ensure you've initialized the workspace with `cotscli init`
+   - Check that the `--home` path is correct
 
-### Debug Mode
+2. **"UTXO file not found"**
+   - Verify the file exists in the current directory or utxos/ subdirectory
+   - Check file permissions
 
-Enable verbose output for detailed information:
+3. **"Insufficient funds"**
+   - Verify UTXOs are properly imported
+   - Check that the source address has sufficient balance
 
-```bash
-cotscli utxo list --db-file cots.db --verbose
-```
+4. **"Database locked"**
+   - Ensure no other processes are using the database
+   - Check file permissions
 
-## Version Information
-
-Check COTS version:
-
-```bash
-cotscli version
-```
-
-## SQLite Integration
-
-COTS uses SQLite for data persistence with the following schema:
-
-- **utxos**: Transaction outputs with amounts and assets
-- **transactions**: Transaction metadata and status
-- **wallets**: Wallet information and addresses
-- **protocol_params**: Protocol parameters with timestamps
-- **metadata**: Key-value storage for configuration
-
-All data is stored in `~/.COTS_NODE/cots.db` by default, providing ACID compliance and efficient querying capabilities.
-
-# Utilisation du paramètre --home et structure du dossier COTS
-
-## Dossier racine par défaut
-
-Par défaut, tous les fichiers et données de COTS sont stockés dans le dossier `~/.COTS_NODE` de votre utilisateur.
-
-- Base de données : `~/.COTS_NODE/cots.db`
-- Clés : `~/.COTS_NODE/keys/`
-- Adresses : `~/.COTS_NODE/addresses/`
-- UTXOs : `~/.COTS_NODE/utxos/`
-- Transactions : `~/.COTS_NODE/transactions/`
-- Protocol : `~/.COTS_NODE/protocol/`
-- Scripts : `~/.COTS_NODE/scripts/`
-
-## Option --home
-
-Vous pouvez personnaliser ce dossier avec l’option globale `--home` sur toutes les commandes :
+### Getting Help
 
 ```bash
-cotscli --home /chemin/vers/mon_cots_home ...
+# Get help for any command
+cotscli --help
+cotscli transaction --help
+cotscli database --help
+cotscli wallet --help
 ```
 
-Toutes les commandes utiliseront alors ce dossier comme racine pour la base, les clés, les utxos, etc.
+## 📚 Additional Resources
 
-## Initialisation automatique
+- **Command Examples**: See `docs/commandes-exemples.md` for detailed examples
+- **Professional Features**: See `docs/professional-features.md` for advanced features
+- **SQLite Implementation**: See `docs/sqlite-implementation.md` for database details
+- **CI/CD**: See `docs/ci-cd.md` for development workflow
 
-La commande suivante crée la structure complète et copie les fichiers d’exemple :
+## 🎉 Conclusion
 
-```bash
-cotscli database init
-```
+COTS provides a professional, Cardano CLI-compatible environment for offline transaction simulation with beautiful colorized output, robust UTXO management, and complete transaction workflow automation. The new `transaction send` command makes it easy to perform complete transaction workflows while maintaining full compatibility with Cardano CLI patterns.
 
-## Chemins par défaut
-
-Si vous ne précisez pas de chemin pour un fichier (db, utxos, etc.), COTS utilisera automatiquement le dossier home courant.
-
-## Exemple de structure générée
-
-```
-~/.COTS_NODE/
-  cots.db
-  keys/
-  addresses/
-  utxos/
-    utxos.json
-    utxos-simple.json
-  transactions/
-  protocol/
-  scripts/
-```
-
-Pour plus d'exemples de commandes, voir le fichier `docs/commandes-exemples.md`.
-
-## 🎯 Key Features Summary
-
-### Professional Output
-- **Colorized Messages**: Success (green), warnings (yellow), info (blue), progress (cyan)
-- **Professional Formatting**: Section headers, table formatting, status indicators
-- **Enhanced Readability**: Clear visual hierarchy and data differentiation
-
-### Cardano CLI Compatibility
-- **Identical Commands**: `query utxo`, `transaction build-raw`, `transaction sign`, etc.
-- **Same Parameters**: All command-line arguments match `cardano-cli`
-- **Consistent Output**: Professional formatting with Cardano CLI compatibility
-
-### Advanced Features
-- **Custom Workspaces**: Use `--home` to specify custom directories
-- **Unique Key Generation**: Cryptographically secure key generation
-- **Realistic Transaction Hashes**: 64-character hexadecimal transaction IDs
-- **Professional UTXO Display**: Colorized transaction hashes, amounts, and indexes
-- **Comprehensive Validation**: Transaction validation with detailed feedback
-
-### Data Management
-- **SQLite Integration**: Robust data persistence with ACID compliance
-- **JSON Import/Export**: Proper UTXO format with `{"unTransactionId": "...", "unTxIndex": 0}`
-- **Database Operations**: Snapshot, restore, inspect, and reset capabilities
-- **Wallet Management**: Create, list, and manage wallets with professional interface
+Enjoy building with COTS! 🚀

@@ -2,7 +2,7 @@
 
 ## Overview
 
-COTS uses a comprehensive CI/CD pipeline powered by GitHub Actions to ensure code quality, security, and reliability.
+COTS uses a comprehensive CI/CD pipeline powered by GitHub Actions to ensure code quality, security, and reliability. The pipeline includes testing for the new transaction workflow features and professional output system.
 
 ## CI/CD Workflows
 
@@ -16,6 +16,7 @@ The main CI pipeline runs on every push and pull request:
 - **Cabal Version**: 3.10
 - **Dependencies**: Automatic caching for faster builds
 - **Coverage**: Generates test coverage reports
+- **Transaction Workflow Testing**: Tests new `transaction send` command
 
 **Workflow Steps:**
 1. Checkout code
@@ -23,7 +24,7 @@ The main CI pipeline runs on every push and pull request:
 3. Cache dependencies
 4. Install system dependencies (SQLite)
 5. Build project with coverage enabled
-6. Run test suite
+6. Run test suite including transaction workflow tests
 7. Generate coverage reports
 8. Upload to Codecov
 
@@ -31,345 +32,390 @@ The main CI pipeline runs on every push and pull request:
 - **HLint**: Haskell linter for code quality
 - **Reports**: Generates HTML reports
 - **Artifacts**: Uploads lint reports
+- **Professional Output**: Validates colorized output formatting
 
 #### **Security Scanning**
 - **Trivy**: Vulnerability scanner
 - **SARIF**: Security Analysis Results Interchange Format
 - **GitHub Security**: Automatic security alerts
+- **Cryptographic Testing**: Validates transaction hash generation
 
 #### **Documentation**
 - **Haddock**: Generates API documentation
 - **Artifacts**: Uploads generated docs
+- **Professional Features**: Documents new transaction workflow
 
 #### **Release Binaries**
 - **Platforms**: Ubuntu and macOS
 - **Trigger**: Only on main branch pushes
 - **Output**: Platform-specific binaries
+- **Transaction Commands**: Includes new `transaction send` command
 
 ### 2. Coverage Workflow (`coverage.yml`)
 
-Dedicated workflow for comprehensive code coverage:
+Dedicated coverage analysis with enhanced reporting:
 
-#### **Features:**
-- HPC (Haskell Program Coverage) integration
-- Codecov integration
-- Coveralls integration
-- Coverage badges generation
-- PR comment with coverage diff
-- Minimum coverage thresholds:
-  - **Green**: 80%+
-  - **Orange**: 60-80%
-  - **Red**: <60%
+#### **Coverage Analysis**
+- **Comprehensive**: Tests all transaction workflow components
+- **Professional Output**: Coverage for colorized output system
+- **UTXO Management**: Coverage for enhanced UTXO features
+- **Database Operations**: Coverage for SQLite operations
 
-#### **Reports:**
-- HTML coverage reports
-- Cobertura XML format
-- Coverage badges (SVG)
-- Trend analysis
+#### **Coverage Reports**
+- **Codecov Integration**: Automatic coverage reporting
+- **Threshold Enforcement**: Minimum coverage requirements
+- **Professional Metrics**: Coverage for professional features
 
-### 3. Release Workflow (`release-please.yml`)
+### 3. SBOM Workflow (`sbom.yml`)
 
-Automated release management:
+Software Bill of Materials generation:
 
-- **Changelog**: Automatic generation
-- **Versioning**: Semantic versioning
-- **Tags**: Automatic Git tags
-- **Releases**: GitHub releases creation
+#### **SBOM Generation**
+- **CycloneDX**: Industry-standard SBOM format
+- **Dependency Tracking**: Complete dependency tree
+- **Security Compliance**: Vulnerability tracking
+- **Professional Features**: Includes new transaction workflow dependencies
 
-## Test Coverage
+## Testing Strategy
 
-### Current Coverage Goals
+### Unit Tests
 
-- **Overall**: 80%+
-- **Core Modules**: 90%+
-- **New Code**: 70%+ required
-
-### Coverage by Module
-
-```
-src/COTS/
-├── CLI.hs                  (85%)
-├── Database.hs             (92%)
-├── Simulation/
-│   ├── Core.hs            (88%)
-│   ├── Fees.hs            (90%)
-│   └── UTXO.hs            (87%)
-├── Protocol/
-│   ├── Parameters.hs      (95%)
-│   └── Consensus.hs       (78%)
-└── Wallet/
-    └── HD.hs              (83%)
+#### **Transaction Workflow Tests**
+```haskell
+-- Test transaction send command
+testTransactionSend :: IO ()
+testTransactionSend = do
+  -- Test complete workflow
+  result <- runTransactionSend testOptions
+  assertEqual "Transaction should succeed" Success result
+  
+  -- Test UTXO updates
+  utxos <- queryUTXOs testAddress
+  assertEqual "Should have correct UTXOs" expectedUTXOs utxos
 ```
 
-### Running Coverage Locally
+#### **Professional Output Tests**
+```haskell
+-- Test colorized output
+testProfessionalOutput :: IO ()
+testProfessionalOutput = do
+  output <- captureOutput $ runCommand testCommand
+  assertContains "Should contain color codes" "\033[1;92m" output
+  assertContains "Should contain success message" "✅" output
+```
 
+#### **UTXO Management Tests**
+```haskell
+-- Test enhanced UTXO features
+testUTXOManagement :: IO ()
+testUTXOManagement = do
+  -- Test address association
+  utxos <- getUTXOsByAddress testAddress
+  assertEqual "Should filter by address" expectedCount (length utxos)
+  
+  -- Test dynamic UTXO creation
+  createUTXO testAddress testAmount
+  utxos' <- getUTXOsByAddress testAddress
+  assertEqual "Should create new UTXO" (expectedCount + 1) (length utxos')
+```
+
+### Integration Tests
+
+#### **Complete Transaction Workflow**
 ```bash
-# Build with coverage
-stack build --coverage
+#!/bin/bash
+# Test complete transaction workflow
 
-# Run tests with coverage
-stack test --coverage
+# Initialize workspace
+cotscli --home ~/test init --path ~/test --name "Test" --network Preprod
 
-# Generate HTML report
-stack hpc report --all --destdir .coverage
+# Initialize database
+cotscli --home ~/test database init --db-file test.db
 
-# Open coverage report
-open .coverage/hpc_index.html
+# Generate keys and addresses
+cotscli --home ~/test address key-gen --verification-key-file alice.vkey --signing-key-file alice.skey
+cotscli --home ~/test address build --payment-verification-key-file alice.vkey --out-file alice.addr --network Preprod --initial-amount 10000000
 
-# Generate detailed module reports
-stack hpc report --all --verbose
+# Generate and import UTXOs
+cotscli --home ~/test database generate-utxo --addresses "$(cat alice.addr)" --amounts "10000000" --out-file initial-utxos.json
+cotscli --home ~/test database import-utxo --utxo-file initial-utxos.json --db-file test.db
+
+# Create wallet
+cotscli --home ~/test wallet create --name "Alice" --address "$(cat alice.addr)" --db-file test.db
+
+# Test transaction send command
+cotscli --home ~/test transaction send \
+  --from-address "$(cat alice.addr)" \
+  --to-address "$(cat alice.addr)" \
+  --amount 1000000 \
+  --db-file test.db \
+  --out-file test-tx \
+  --signing-key-file alice.skey \
+  --testnet-magic 1
+
+# Verify transaction ID
+cotscli --home ~/test transaction txid --tx-file test-tx.signed
+
+# Verify UTXOs updated
+cotscli --home ~/test query utxo --address "$(cat alice.addr)" --testnet-magic 1 --db-file test.db
 ```
 
-### Understanding Coverage Reports
-
-- **Expression Coverage**: % of expressions executed
-- **Boolean Coverage**: % of boolean conditions tested
-- **Alternative Coverage**: % of pattern matches covered
-- **Top-level Definitions**: % of top-level functions tested
-
-## Testing
-
-### Test Structure
-
-```
-test/
-├── Spec.hs                    # Test runner entry point
-├── DatabaseSpec.hs            # Database operations
-│   ├── Initialization tests
-│   ├── CRUD operations
-│   ├── Snapshot tests
-│   └── Import/Export tests
-├── SimulationSpec.hs          # Transaction simulation
-│   ├── Transaction building
-│   ├── Fee calculation
-│   ├── UTXO selection
-│   └── Validation tests
-├── WalletSpec.hs              # Wallet management
-│   ├── Key generation
-│   ├── Address derivation
-│   ├── HD wallet tests
-│   └── Mnemonic tests
-└── ProtocolSpec.hs            # Protocol parameters
-    ├── Parameter validation
-    ├── Network configuration
-    └── Consensus rules
-```
-
-### Test Categories
-
-#### Unit Tests
-- Individual function testing
-- Pure function verification
-- Edge case handling
-- Error condition testing
-
-#### Integration Tests
-- Multi-module interactions
-- Database integration
-- File I/O operations
-- CLI command testing
-
-#### Property Tests
-- QuickCheck properties
-- Invariant verification
-- Randomized testing
-- Fuzz testing
-
-### Running Tests
-
+#### **Professional Output Validation**
 ```bash
-# All tests
-stack test
+#!/bin/bash
+# Test professional output formatting
 
-# Specific test suite
-stack test :cardano-offline-transaction-simulator-test
+# Test colorized output
+output=$(cotscli --home ~/test address key-gen --verification-key-file test.vkey --signing-key-file test.skey 2>&1)
+echo "$output" | grep -q "✅" || exit 1
+echo "$output" | grep -q "▶" || exit 1
+echo "$output" | grep -q "ℹ" || exit 1
 
-# With verbose output
-stack test --test-arguments="--verbose"
-
-# Pattern matching
-stack test --test-arguments="--match /Database/"
-
-# Fast fail on first error
-stack test --test-arguments="--fail-fast"
-
-# Parallel test execution
-stack test --test-arguments="+RTS -N4 -RTS"
+# Test table formatting
+output=$(cotscli --home ~/test query utxo --address test.addr --testnet-magic 1 --db-file test.db 2>&1)
+echo "$output" | grep -q "═══" || exit 1
+echo "$output" | grep -q "│" || exit 1
 ```
 
-### Integration Test Script
+### Performance Tests
 
-The `test-all-commands.sh` script tests all CLI commands:
-
-```bash
-chmod +x test-all-commands.sh
-./test-all-commands.sh
+#### **Transaction Workflow Performance**
+```haskell
+-- Test transaction workflow performance
+testTransactionPerformance :: IO ()
+testTransactionPerformance = do
+  startTime <- getCurrentTime
+  replicateM_ 100 $ runTransactionSend testOptions
+  endTime <- getCurrentTime
+  let duration = diffUTCTime endTime startTime
+  assertBool "Should complete within reasonable time" (duration < 10)
 ```
 
-**Test Categories:**
-- Database commands (init, reset, snapshot, inspect)
-- Address commands (key-gen, build, info)
-- Stake address commands
-- Transaction commands (build, sign, validate)
-- UTXO commands (list, reserve)
-- Minting commands
-- Protocol commands
+#### **Database Performance**
+```haskell
+-- Test database performance with large datasets
+testDatabasePerformance :: IO ()
+testDatabasePerformance = do
+  -- Create large number of UTXOs
+  utxos <- replicateM 1000 $ createTestUTXO
+  startTime <- getCurrentTime
+  mapM_ insertUTXO utxos
+  endTime <- getCurrentTime
+  let duration = diffUTCTime endTime startTime
+  assertBool "Should handle large datasets efficiently" (duration < 5)
+```
 
-## Continuous Deployment
+## Quality Assurance
 
-### Deployment Pipeline
+### Code Quality
 
-1. **Code Push** → Triggers CI
-2. **Tests Pass** → Coverage analysis
-3. **Security Scan** → Vulnerability check
-4. **Build Artifacts** → Binary creation
-5. **Release Creation** → Automated versioning
-6. **Documentation** → API docs update
+#### **Static Analysis**
+- **HLint**: Haskell linter for code quality
+- **Professional Standards**: Enforces professional coding standards
+- **Transaction Workflow**: Validates transaction workflow implementation
+- **Output Formatting**: Ensures consistent professional output
+
+#### **Type Safety**
+- **Haskell Type System**: Leverages strong typing for reliability
+- **Transaction Types**: Type-safe transaction operations
+- **UTXO Types**: Type-safe UTXO management
+- **Professional Types**: Type-safe professional output system
+
+### Security Testing
+
+#### **Cryptographic Testing**
+```haskell
+-- Test transaction hash generation
+testTransactionHashGeneration :: IO ()
+testTransactionHashGeneration = do
+  hash1 <- generateTransactionHash 1
+  hash2 <- generateTransactionHash 2
+  assertBool "Hashes should be different" (hash1 /= hash2)
+  assertEqual "Hash should be 64 characters" 64 (length hash1)
+  assertBool "Hash should be hexadecimal" (all isHexDigit hash1)
+```
+
+#### **Input Validation**
+```haskell
+-- Test input validation
+testInputValidation :: IO ()
+testInputValidation = do
+  -- Test invalid amounts
+  result1 <- runTransactionSend (testOptions { amount = 0 })
+  assertEqual "Should reject zero amount" ValidationError result1
+  
+  -- Test invalid addresses
+  result2 <- runTransactionSend (testOptions { toAddress = "invalid" })
+  assertEqual "Should reject invalid address" ValidationError result2
+```
+
+### Professional Output Testing
+
+#### **Color Output Validation**
+```haskell
+-- Test colorized output
+testColorOutput :: IO ()
+testColorOutput = do
+  output <- captureOutput $ successMsg "Test message"
+  assertContains "Should contain green color" "\033[1;92m" output
+  assertContains "Should contain checkmark" "✅" output
+```
+
+#### **Table Formatting Tests**
+```haskell
+-- Test table formatting
+testTableFormatting :: IO ()
+testTableFormatting = do
+  output <- captureOutput $ printUTXOTable testUTXOs
+  assertContains "Should contain table headers" "TxHash" output
+  assertContains "Should contain separators" "│" output
+  assertContains "Should contain borders" "═══" output
+```
+
+## Continuous Integration Features
+
+### Automated Testing
+
+#### **Transaction Workflow Tests**
+- **Complete Workflow**: Tests entire transaction process
+- **Individual Steps**: Tests each step of the workflow
+- **Error Handling**: Tests error scenarios
+- **Performance**: Tests workflow performance
+
+#### **Professional Output Tests**
+- **Color Validation**: Tests colorized output
+- **Format Validation**: Tests table formatting
+- **Message Validation**: Tests professional messages
+- **Accessibility**: Tests output accessibility
+
+#### **UTXO Management Tests**
+- **Address Association**: Tests UTXO-address association
+- **Dynamic Creation**: Tests dynamic UTXO creation
+- **Change Handling**: Tests change UTXO handling
+- **Database Updates**: Tests database updates
+
+### Code Coverage
+
+#### **Coverage Targets**
+- **Transaction Workflow**: 95% coverage for transaction commands
+- **Professional Output**: 90% coverage for output system
+- **UTXO Management**: 95% coverage for UTXO operations
+- **Database Operations**: 90% coverage for database functions
+
+#### **Coverage Reports**
+- **HTML Reports**: Detailed coverage reports
+- **Codecov Integration**: Automatic coverage reporting
+- **Threshold Enforcement**: Minimum coverage requirements
+- **Professional Metrics**: Coverage for professional features
+
+### Security Scanning
+
+#### **Vulnerability Scanning**
+- **Trivy Scanner**: Automated vulnerability scanning
+- **SARIF Reports**: Security Analysis Results Interchange Format
+- **GitHub Security**: Automatic security alerts
+- **Dependency Scanning**: Third-party dependency scanning
+
+#### **Cryptographic Validation**
+- **Hash Generation**: Validates transaction hash generation
+- **Key Generation**: Validates key generation security
+- **Random Number Generation**: Validates random number generation
+- **Professional Security**: Validates professional security features
+
+## Deployment Pipeline
 
 ### Release Process
 
-1. Commit following [Conventional Commits](https://www.conventionalcommits.org/)
-   ```
-   feat: add new command
-   fix: resolve database issue
-   docs: update README
-   chore: update dependencies
-   ```
+#### **Automated Releases**
+- **Version Bumping**: Automatic version management
+- **Changelog Generation**: Automatic changelog updates
+- **Binary Generation**: Cross-platform binary generation
+- **Documentation Updates**: Automatic documentation updates
 
-2. Push to main branch
-3. Release Please creates PR with changelog
-4. Merge PR to trigger release
-5. GitHub Release created automatically
-6. Binaries attached to release
+#### **Release Validation**
+- **Transaction Workflow**: Validates transaction commands
+- **Professional Output**: Validates professional features
+- **UTXO Management**: Validates UTXO operations
+- **Database Compatibility**: Validates database operations
 
-## Quality Gates
+### Quality Gates
 
-### Required Checks
+#### **Pre-Release Checks**
+- **Test Coverage**: Minimum coverage requirements
+- **Performance Tests**: Performance benchmarks
+- **Security Scans**: Security vulnerability checks
+- **Professional Standards**: Professional output validation
 
-Before merge to main:
-- ✅ All tests pass
-- ✅ Code coverage ≥ 70%
-- ✅ No HLint warnings
-- ✅ No security vulnerabilities
-- ✅ Documentation builds successfully
-- ✅ All platforms build successfully
+#### **Post-Release Validation**
+- **Integration Tests**: End-to-end testing
+- **User Acceptance**: User acceptance testing
+- **Performance Monitoring**: Performance monitoring
+- **Professional Feedback**: Professional feature validation
 
-### Branch Protection
+## Monitoring and Observability
 
-Main branch protections:
-- Require PR reviews
-- Require status checks
-- Require linear history
-- Require signed commits (recommended)
-- Automatically delete head branches
+### Test Metrics
 
-## Monitoring & Metrics
+#### **Transaction Workflow Metrics**
+- **Success Rate**: Transaction workflow success rate
+- **Performance**: Transaction workflow performance
+- **Error Rate**: Transaction workflow error rate
+- **Professional Quality**: Professional output quality
 
-### Build Metrics
+#### **Professional Output Metrics**
+- **Color Accuracy**: Color output accuracy
+- **Format Consistency**: Format consistency
+- **Message Quality**: Professional message quality
+- **User Experience**: User experience metrics
 
-- **Build Time**: Target < 10 minutes
-- **Test Time**: Target < 5 minutes
-- **Cache Hit Rate**: Target > 80%
+### Continuous Improvement
 
-### Coverage Metrics
+#### **Test Optimization**
+- **Test Speed**: Optimize test execution speed
+- **Test Coverage**: Improve test coverage
+- **Test Quality**: Improve test quality
+- **Professional Standards**: Maintain professional standards
 
-- **Overall Coverage**: Monitor trends
-- **Module Coverage**: Identify gaps
-- **Coverage Delta**: Track changes
-- **Uncovered Lines**: Prioritize improvements
-
-### Quality Metrics
-
-- **HLint Issues**: Target = 0
-- **Security Vulnerabilities**: Target = 0
-- **Documentation Coverage**: Target > 90%
-- **Test Pass Rate**: Target = 100%
-
-## Troubleshooting
-
-### Common CI Failures
-
-#### Build Failures
-```bash
-# Clear local cache
-rm -rf .stack-work
-
-# Rebuild from scratch
-stack clean
-stack build
-```
-
-#### Test Failures
-```bash
-# Run specific failing test
-stack test --test-arguments="--match /YourTestName/"
-
-# Debug with verbose output
-stack test --test-arguments="--verbose"
-```
-
-#### Coverage Issues
-```bash
-# Clean coverage data
-rm -rf .hpc
-
-# Rebuild with coverage
-stack clean
-stack build --coverage
-stack test --coverage
-```
-
-### GitHub Actions Debug
-
-Enable debug logging:
-1. Repository Settings → Secrets
-2. Add `ACTIONS_STEP_DEBUG` = `true`
-3. Add `ACTIONS_RUNNER_DEBUG` = `true`
+#### **Professional Enhancement**
+- **Output Quality**: Enhance professional output
+- **User Experience**: Improve user experience
+- **Feature Completeness**: Complete professional features
+- **Documentation Quality**: Improve documentation quality
 
 ## Best Practices
 
-### Writing Tests
+### Testing Best Practices
 
-1. **Test Naming**: Descriptive and specific
-   ```haskell
-   it "should initialize database with correct schema" $ do
-     -- test code
-   ```
-
-2. **Setup/Teardown**: Use `before` and `after` hooks
-   ```haskell
-   around withDatabase $ do
-     it "performs operation" $ \db -> do
-       -- test with db
-   ```
-
-3. **Assertions**: Clear and specific
-   ```haskell
-   result `shouldBe` expected
-   result `shouldSatisfy` predicate
-   ```
-
-4. **Coverage**: Aim for edge cases
-   - Empty inputs
-   - Null values
-   - Boundary conditions
-   - Error paths
+1. **Comprehensive Testing**: Test all transaction workflow components
+2. **Professional Validation**: Validate professional output features
+3. **Performance Testing**: Test performance with large datasets
+4. **Security Testing**: Test cryptographic and security features
+5. **Integration Testing**: Test complete workflows end-to-end
 
 ### CI/CD Best Practices
 
-1. **Fast Feedback**: Keep CI runs under 15 minutes
-2. **Fail Fast**: Stop on first critical error
-3. **Clear Output**: Meaningful error messages
-4. **Artifact Retention**: Keep important artifacts
-5. **Secret Management**: Use GitHub Secrets
-6. **Cache Wisely**: Cache dependencies, not outputs
-7. **Parallel Execution**: Run independent jobs in parallel
+1. **Automated Testing**: Automate all testing processes
+2. **Quality Gates**: Implement quality gates for releases
+3. **Security Scanning**: Regular security vulnerability scanning
+4. **Professional Standards**: Maintain professional coding standards
+5. **Documentation**: Keep documentation up-to-date
 
-## Resources
+### Professional Standards
 
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [Haskell CI Best Practices](https://github.com/haskell-CI/haskell-ci)
-- [HPC Documentation](https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/profiling.html#observing-code-coverage)
-- [Codecov Documentation](https://docs.codecov.io/)
-- [Release Please](https://github.com/googleapis/release-please)
+1. **Code Quality**: Maintain high code quality standards
+2. **Professional Output**: Ensure consistent professional output
+3. **User Experience**: Focus on user experience quality
+4. **Feature Completeness**: Complete professional feature implementation
+5. **Documentation**: Maintain comprehensive documentation
 
+## Conclusion
+
+The COTS CI/CD pipeline ensures high-quality, professional software delivery with comprehensive testing of the new transaction workflow features and professional output system. The pipeline includes:
+
+- **Complete transaction workflow testing**
+- **Professional output validation**
+- **Enhanced UTXO management testing**
+- **Security and performance validation**
+- **Professional quality assurance**
+
+This ensures that COTS delivers a professional, reliable, and secure Cardano transaction simulation environment! 🚀
